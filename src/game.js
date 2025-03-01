@@ -9,16 +9,23 @@ const ctx = canvas.getContext("2d");
 const { width, height } = canvas;
 let lastTime;
 let lastInputTime = 0;
-const inputCooldown = 150; // ms between allowed inputs
+const inputCooldown = 100; // ms between allowed inputs - reduced for better responsiveness
 
 const resources = createResourceLoader();
 
 // Game constants
 const GRID_SIZE = 4;
-const CELL_PADDING = width * 0.01;
-const BOARD_PADDING = width * 0.05;
-const CELL_SIZE =
-  (width - BOARD_PADDING * 2 - CELL_PADDING * (GRID_SIZE + 1)) / GRID_SIZE;
+// Calculate responsive padding based on available space
+const BOARD_PADDING_PERCENT = 0.03; // Reduce padding to 3% of width
+const CELL_PADDING_PERCENT = 0.005; // Reduce cell padding to 0.5% of width
+const BOARD_PADDING = width * BOARD_PADDING_PERCENT;
+const CELL_PADDING = width * CELL_PADDING_PERCENT;
+// Dynamic calculation to ensure the board fits within the canvas
+const BOARD_SIZE = Math.min(
+  width - BOARD_PADDING * 2,
+  height - BOARD_PADDING * 4,
+);
+const CELL_SIZE = (BOARD_SIZE - CELL_PADDING * (GRID_SIZE + 1)) / GRID_SIZE;
 const FONT_SIZE = CELL_SIZE * 0.4;
 
 // Color palette
@@ -54,7 +61,7 @@ const game = {
   moveInProgress: false,
   animationProgress: 0,
   animationStartTime: 0,
-  animationDuration: 200, // ms
+  animationDuration: 80, // ms - significantly faster animations
   animationQueue: [], // [{from: {row, col}, to: {row, col}, value}]
   mergeQueue: [], // [{row, col, value}]
 };
@@ -417,8 +424,12 @@ function moveDown() {
 
 // Helpers for drawing
 function getCellPosition(row, col) {
-  const x = BOARD_PADDING + col * (CELL_SIZE + CELL_PADDING) + CELL_PADDING;
-  const y = BOARD_PADDING + row * (CELL_SIZE + CELL_PADDING) + CELL_PADDING;
+  // Calculate board position (centered horizontally)
+  const boardX = (width - BOARD_SIZE) / 2;
+  const boardY = BOARD_PADDING * 2; // Leave space for score at top
+
+  const x = boardX + col * (CELL_SIZE + CELL_PADDING) + CELL_PADDING;
+  const y = boardY + row * (CELL_SIZE + CELL_PADDING) + CELL_PADDING;
   return { x, y };
 }
 
@@ -439,13 +450,17 @@ function drawBoard() {
   ctx.fillStyle = COLORS.background;
   ctx.fillRect(0, 0, width, height);
 
-  // Draw board background
+  // Center the board on the canvas
+  const boardX = (width - BOARD_SIZE) / 2;
+  const boardY = BOARD_PADDING * 2; // Leave space for score at top
+
+  // Draw board background (centered)
   ctx.fillStyle = COLORS.board;
   ctx.fillRect(
-    BOARD_PADDING - CELL_PADDING / 2,
-    BOARD_PADDING - CELL_PADDING / 2,
-    width - BOARD_PADDING * 2 + CELL_PADDING,
-    width - BOARD_PADDING * 2 + CELL_PADDING,
+    boardX - CELL_PADDING / 2,
+    boardY - CELL_PADDING / 2,
+    BOARD_SIZE + CELL_PADDING,
+    BOARD_SIZE + CELL_PADDING,
   );
 
   // Draw empty cells
@@ -502,13 +517,13 @@ function drawAnimations(deltaTime) {
     (performance.now() - game.animationStartTime) / game.animationDuration,
   );
 
+  // Use a faster linear animation for more responsiveness
+  const progress = game.animationProgress;
+
   // Draw animated tiles
   for (const anim of game.animationQueue) {
     const fromPos = getCellPosition(anim.from.row, anim.from.col);
     const toPos = getCellPosition(anim.to.row, anim.to.col);
-
-    // Apply easing function (ease-out cubic)
-    const progress = 1 - Math.pow(1 - game.animationProgress, 3);
 
     const x = fromPos.x + (toPos.x - fromPos.x) * progress;
     const y = fromPos.y + (toPos.y - fromPos.y) * progress;
@@ -521,12 +536,12 @@ function drawAnimations(deltaTime) {
     drawTile(anim.to.row, anim.to.col, anim.value, 1, offsetX, offsetY);
   }
 
-  // Draw merge animations
-  if (game.animationProgress > 0.5) {
-    const mergeProgress = (game.animationProgress - 0.5) * 2;
+  // Draw merge animations - start earlier and make them quicker
+  if (game.animationProgress > 0.3) {
+    const mergeProgress = (game.animationProgress - 0.3) / 0.7; // Normalize to 0-1 range
 
-    // Apply pop effect (scale up and down)
-    const scale = 1 + 0.2 * Math.sin(mergeProgress * Math.PI);
+    // Simpler, faster scale animation
+    const scale = 1 + 0.1 * Math.sin(mergeProgress * Math.PI);
 
     for (const merge of game.mergeQueue) {
       drawTile(merge.row, merge.col, merge.value, scale);
@@ -565,10 +580,39 @@ function drawGameOver() {
 }
 
 function drawScore() {
-  const scoreBoxWidth = width * 0.2;
-  const scoreBoxHeight = height * 0.1;
-  const scoreBoxX = width - BOARD_PADDING - scoreBoxWidth;
-  const scoreBoxY = BOARD_PADDING / 2 - scoreBoxHeight / 2;
+  // Center the score boxes relative to the board
+  const boardX = (width - BOARD_SIZE) / 2;
+  const scoreBoxWidth = BOARD_SIZE * 0.2;
+  const scoreBoxHeight = BOARD_PADDING * 1.5;
+  const scoreBoxY = BOARD_PADDING / 2;
+
+  // Position score boxes centered with the board
+  const bestBoxX = boardX + BOARD_SIZE * 0.15;
+  const scoreBoxX = boardX + BOARD_SIZE * 0.65;
+
+  // Draw best score box
+  ctx.fillStyle = COLORS.board;
+  ctx.fillRect(bestBoxX, scoreBoxY, scoreBoxWidth, scoreBoxHeight);
+
+  // Draw best score title
+  ctx.fillStyle = COLORS.textLight;
+  ctx.font = `bold ${FONT_SIZE * 0.5}px Arial`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  ctx.fillText(
+    "BEST",
+    bestBoxX + scoreBoxWidth / 2,
+    scoreBoxY + scoreBoxHeight * 0.1,
+  );
+
+  // Draw best score
+  ctx.font = `bold ${FONT_SIZE * 0.8}px Arial`;
+  ctx.textBaseline = "middle";
+  ctx.fillText(
+    game.bestScore.toString(),
+    bestBoxX + scoreBoxWidth / 2,
+    scoreBoxY + scoreBoxHeight * 0.6,
+  );
 
   // Draw score box
   ctx.fillStyle = COLORS.board;
@@ -593,54 +637,32 @@ function drawScore() {
     scoreBoxX + scoreBoxWidth / 2,
     scoreBoxY + scoreBoxHeight * 0.6,
   );
-
-  // Draw best score box
-  const bestBoxX = scoreBoxX - scoreBoxWidth - BOARD_PADDING * 0.2;
-
-  ctx.fillStyle = COLORS.board;
-  ctx.fillRect(bestBoxX, scoreBoxY, scoreBoxWidth, scoreBoxHeight);
-
-  // Draw best score title
-  ctx.fillStyle = COLORS.textLight;
-  ctx.font = `bold ${FONT_SIZE * 0.5}px Arial`;
-  ctx.textBaseline = "top";
-  ctx.fillText(
-    "BEST",
-    bestBoxX + scoreBoxWidth / 2,
-    scoreBoxY + scoreBoxHeight * 0.1,
-  );
-
-  // Draw best score
-  ctx.font = `bold ${FONT_SIZE * 0.8}px Arial`;
-  ctx.textBaseline = "middle";
-  ctx.fillText(
-    game.bestScore.toString(),
-    bestBoxX + scoreBoxWidth / 2,
-    scoreBoxY + scoreBoxHeight * 0.6,
-  );
 }
 
 function drawTitle() {
+  // Center title with the board
+  const boardX = (width - BOARD_SIZE) / 2;
+
   // Draw 2048 title
   ctx.fillStyle = COLORS.textDark;
-  ctx.font = `bold ${FONT_SIZE * 2}px Arial`;
+  ctx.font = `bold ${FONT_SIZE * 1.5}px Arial`;
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
-  ctx.fillText("2048", BOARD_PADDING, BOARD_PADDING / 2);
+  ctx.fillText("2048", boardX, BOARD_PADDING / 2);
 }
 
 function drawInstructions() {
-  const y = height - BOARD_PADDING / 2;
+  // Position instructions below the board
+  const boardY = BOARD_PADDING * 2;
+  const y = boardY + BOARD_SIZE + BOARD_PADDING;
 
   ctx.fillStyle = COLORS.textDark;
   ctx.font = `${FONT_SIZE * 0.6}px Arial`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText(
-    "Use arrow keys or gamepad to move. Reach 2048 to win!",
-    width / 2,
-    y,
-  );
+
+  // Shorter instruction text to avoid cutoff
+  ctx.fillText("Use arrow keys or gamepad to move", width / 2, y);
 }
 
 // Update function
