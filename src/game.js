@@ -174,7 +174,6 @@ function checkWin() {
 
 // MOVE FUNCTIONS
 function moveLeft() {
-  console.log('to the left to the left');
   let moved = false;
   game.animationQueue = [];
   game.mergeQueue = [];
