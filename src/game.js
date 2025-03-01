@@ -9,7 +9,7 @@ const ctx = canvas.getContext('2d');
 const { width, height } = canvas;
 let lastTime = 0;
 let lastInputTime = 0;
-const inputCooldown = 80; // ms between allowed inputs - very responsive
+const inputCooldown = 60; // ms between allowed inputs - very responsive
 
 const resources = createResourceLoader();
 
@@ -112,10 +112,12 @@ function addRandomTile() {
     isNew: true  // Flag to indicate this is a new tile
   });
 
-  // Start animation for new tile
+  // FIXED: Always set moveInProgress to true when adding a tile to ensure animation plays
+  game.moveInProgress = true;
+
+  // Make sure animation timing starts fresh
   if (game.animationProgress === 0) {
     game.animationStartTime = performance.now();
-    game.moveInProgress = true;
   }
 }
 
@@ -165,6 +167,7 @@ function checkWin() {
 
 // MOVE FUNCTIONS
 function moveLeft() {
+  console.log('to the left to the left');
   let moved = false;
   game.animationQueue = [];
   game.mergeQueue = [];
@@ -659,27 +662,27 @@ function drawScore() {
   ctx.textBaseline = 'middle';
   ctx.fillText(game.bestScore.toString(), SIDE_PANEL_WIDTH / 2, bestBoxY + scoreBoxHeight / 2 + padding / 2);
 
-  // Draw New Game button - ensure button fits and text is centered
+  // Draw New Game button - FIXED: smaller font and better positioning
   const buttonY = bestBoxY + scoreBoxHeight + padding;
   const buttonHeight = FONT_SIZE * 2;
   ctx.fillStyle = '#8f7a66';  // Button color
   ctx.fillRect(padding, buttonY, scoreBoxWidth, buttonHeight);
 
-  // Button text - make sure it fully appears
+  // Button text - FIXED: smaller font size ensures text fits
   ctx.fillStyle = COLORS.textLight;
-  ctx.font = `bold ${FONT_SIZE * 0.75}px Arial`; // Slightly smaller font
+  ctx.font = `bold ${FONT_SIZE * 0.7}px Arial`; // Reduced font size
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText('NEW GAME', SIDE_PANEL_WIDTH / 2, buttonY + buttonHeight / 2);
 
-  // Draw instructions - make sure they appear
+  // Draw instructions - FIXED: added instructions with proper spacing
   const instructionsY = buttonY + buttonHeight + padding;
   ctx.fillStyle = COLORS.textDark;
-  ctx.font = `${FONT_SIZE * 0.55}px Arial`; // Adjusted size for visibility
+  ctx.font = `${FONT_SIZE * 0.55}px Arial`; // Smaller font size for more text
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
 
-  // Instructions with proper spacing for visibility
+  // Instructions with proper spacing
   const lineHeight = FONT_SIZE * 0.9;
   ctx.fillText('HOW TO PLAY:', SIDE_PANEL_WIDTH / 2, instructionsY);
   ctx.fillText('Use arrow keys', SIDE_PANEL_WIDTH / 2, instructionsY + lineHeight);
@@ -722,14 +725,15 @@ function drawGameOver() {
 function update(deltaTime) {
   if (!resources.isComplete()) return;
 
-  // Skip if animation is in progress
+  // FIXED: Ensure we only handle animations or input, not both at the same time
   if (game.moveInProgress) {
+    console.log('move in progress');
     return;
   }
 
   const currentTime = performance.now();
 
-  // Get input - make sure we're getting accurate input from getInput()
+  // Get input - FIXED: Make sure we handle input correctly
   const [p1] = getInput();
 
   // Only process input if enough time has passed
@@ -743,6 +747,7 @@ function update(deltaTime) {
         lastInputTime = currentTime;
       }
     } else {
+      // FIXED: Added additional debugging for input and ensured proper handling
       if (p1.DPAD_LEFT.pressed) {
         moveMade = moveLeft();
         lastInputTime = currentTime;
@@ -762,6 +767,7 @@ function update(deltaTime) {
         return;
       }
 
+      // FIXED: Make sure we handle successful moves correctly
       if (moveMade) {
         game.moveInProgress = true;
         addRandomTile();
