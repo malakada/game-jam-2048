@@ -112,10 +112,7 @@ function addRandomTile() {
     isNew: true  // Flag to indicate this is a new tile
   });
 
-  // FIXED: Always set moveInProgress to true when adding a tile to ensure animation plays
-  game.moveInProgress = true;
-
-  // Make sure animation timing starts fresh
+  // Reset animation timing when adding new tiles
   if (game.animationProgress === 0) {
     game.animationStartTime = performance.now();
   }
@@ -560,14 +557,17 @@ function drawTile(row, col, value, scale = 1, offsetX = 0, offsetY = 0) {
   ctx.fillText(value.toString(), xPos + scaledSize / 2, yPos + scaledSize / 2);
 }
 
+// Draw animations
 function drawAnimations() {
-  if (game.animationQueue.length === 0 && game.mergeQueue.length === 0) return;
-
-  if (game.animationProgress === 0) {
-    game.animationStartTime = performance.now();
+  if (game.animationQueue.length === 0 && game.mergeQueue.length === 0) {
+    game.moveInProgress = false;
+    return;
   }
 
-  game.animationProgress = Math.min(1, (performance.now() - game.animationStartTime) / game.animationDuration);
+  // Calculate animation progress based on elapsed time
+  const currentTime = performance.now();
+  const elapsed = currentTime - game.animationStartTime;
+  game.animationProgress = Math.min(1, elapsed / game.animationDuration);
 
   // Super fast linear animation - no easing for faster response
   const progress = game.animationProgress;
@@ -600,19 +600,10 @@ function drawAnimations() {
 
   // Reset animations when complete
   if (game.animationProgress >= 1) {
-    // Force a redraw of the entire grid to ensure consistency
-    for (let row = 0; row < GRID_SIZE; row++) {
-      for (let col = 0; col < GRID_SIZE; col++) {
-        if (game.grid[row][col] > 0) {
-          drawTile(row, col, game.grid[row][col]);
-        }
-      }
-    }
-
+    game.moveInProgress = false;
     game.animationProgress = 0;
     game.animationQueue = [];
     game.mergeQueue = [];
-    game.moveInProgress = false;
   }
 }
 
@@ -725,29 +716,38 @@ function drawGameOver() {
 function update(deltaTime) {
   if (!resources.isComplete()) return;
 
-  // FIXED: Ensure we only handle animations or input, not both at the same time
+  // Handle animations first
   if (game.moveInProgress) {
-    console.log('move in progress');
+    const currentTime = performance.now();
+    const elapsed = currentTime - game.animationStartTime;
+
+    // Clear moveInProgress if animation has completed
+    if (elapsed >= game.animationDuration) {
+      game.moveInProgress = false;
+      game.animationProgress = 0;
+      game.animationQueue = [];
+      game.mergeQueue = [];
+    }
     return;
   }
 
   const currentTime = performance.now();
 
-  // Get input - FIXED: Make sure we handle input correctly
+  // Get input - ensure we're getting the most up-to-date input
   const [p1] = getInput();
 
-  // Only process input if enough time has passed
+  // Only process input if enough time has passed (reduced cooldown for responsiveness)
   if (currentTime - lastInputTime > inputCooldown) {
     let moveMade = false;
 
-    if (game.gameOver) {
+    if (game.gameOver || game.won) {
       // Restart the game if Enter is pressed
       if (p1.START.pressed || p1.BUTTON_SOUTH.pressed) {
         initGame();
         lastInputTime = currentTime;
       }
     } else {
-      // FIXED: Added additional debugging for input and ensured proper handling
+      // Handle directional input
       if (p1.DPAD_LEFT.pressed) {
         moveMade = moveLeft();
         lastInputTime = currentTime;
@@ -767,9 +767,13 @@ function update(deltaTime) {
         return;
       }
 
-      // FIXED: Make sure we handle successful moves correctly
       if (moveMade) {
+        // Start animation sequence
         game.moveInProgress = true;
+        game.animationStartTime = performance.now();
+        game.animationProgress = 0;
+
+        // Add a new tile
         addRandomTile();
 
         // Check win/lose conditions
@@ -795,30 +799,31 @@ function draw() {
   // Draw the board and UI
   drawBoard();
 
-  // Draw tiles
-  if (!game.moveInProgress) {
-    for (let row = 0; row < GRID_SIZE; row++) {
-      for (let col = 0; col < GRID_SIZE; col++) {
+  // Track positions that will be animated
+  const animatedPositions = new Set();
+
+  // Mark all tiles in the animation queue as animated
+  for (const anim of game.animationQueue) {
+    animatedPositions.add(`${anim.to.row},${anim.to.col}`);
+  }
+
+  // Also mark all tiles in the merge queue as animated
+  for (const merge of game.mergeQueue) {
+    animatedPositions.add(`${merge.row},${merge.col}`);
+  }
+
+  // First draw all non-animated tiles
+  for (let row = 0; row < GRID_SIZE; row++) {
+    for (let col = 0; col < GRID_SIZE; col++) {
+      const key = `${row},${col}`;
+      if (!animatedPositions.has(key) && game.grid[row][col] > 0) {
         drawTile(row, col, game.grid[row][col]);
       }
     }
-  } else {
-    // During animation, draw only non-animated tiles
-    const animatedPositions = new Set();
+  }
 
-    for (const anim of game.animationQueue) {
-      animatedPositions.add(`${anim.to.row},${anim.to.col}`);
-    }
-
-    for (let row = 0; row < GRID_SIZE; row++) {
-      for (let col = 0; col < GRID_SIZE; col++) {
-        if (!animatedPositions.has(`${row},${col}`)) {
-          drawTile(row, col, game.grid[row][col]);
-        }
-      }
-    }
-
-    // Draw the animations
+  // Then draw animations if there are any
+  if (game.animationQueue.length > 0 || game.mergeQueue.length > 0) {
     drawAnimations();
   }
 
@@ -830,6 +835,7 @@ function draw() {
     drawGameOver();
   }
 }
+
 // Game loop
 function gameLoop(time) {
   const deltaTime = lastTime ? time - lastTime : 16;
