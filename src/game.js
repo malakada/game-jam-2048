@@ -9,7 +9,7 @@ const ctx = canvas.getContext('2d');
 const { width, height } = canvas;
 let lastTime = 0;
 let lastInputTime = 0;
-const inputCooldown = 60; // ms between allowed inputs - very responsive
+const inputCooldown = 80; // ms between allowed inputs - very responsive
 
 const resources = createResourceLoader();
 
@@ -101,7 +101,16 @@ function addRandomTile() {
   const cell = emptyCells[Math.floor(Math.random() * emptyCells.length)];
 
   // Add a 2 (90% chance) or 4 (10% chance)
-  game.grid[cell.row][cell.col] = Math.random() < 0.9 ? 2 : 4;
+  const value = Math.random() < 0.9 ? 2 : 4;
+  game.grid[cell.row][cell.col] = value;
+
+  // Add a "pop in" animation for the new tile
+  game.mergeQueue.push({
+    row: cell.row,
+    col: cell.col,
+    value: value,
+    isNew: true  // Flag to indicate this is a new tile
+  });
 }
 
 // Check if the game is over
@@ -543,7 +552,7 @@ function drawTile(row, col, value, scale = 1, offsetX = 0, offsetY = 0) {
 }
 
 function drawAnimations() {
-  if (game.animationQueue.length === 0) return;
+  if (game.animationQueue.length === 0 && game.mergeQueue.length === 0) return;
 
   if (game.animationProgress === 0) {
     game.animationStartTime = performance.now();
@@ -570,16 +579,14 @@ function drawAnimations() {
     drawTile(anim.to.row, anim.to.col, anim.value, 1, offsetX, offsetY);
   }
 
-  // Quick merge animation - start even earlier
-  if (game.animationProgress > 0.1) {
-    const mergeProgress = (game.animationProgress - 0.1) / 0.9;
+  // Animation for new tiles and merged tiles
+  for (const merge of game.mergeQueue) {
+    // Scale from 0 to 1 for new tiles, pulse effect for merged tiles
+    const scale = merge.isNew
+      ? progress
+      : 1 + 0.1 * Math.sin(progress * Math.PI);
 
-    // Simple scale effect
-    const scale = 1 + 0.05 * Math.sin(mergeProgress * Math.PI);
-
-    for (const merge of game.mergeQueue) {
-      drawTile(merge.row, merge.col, merge.value, scale);
-    }
+    drawTile(merge.row, merge.col, merge.value, scale);
   }
 
   // Reset animations when complete
@@ -658,16 +665,16 @@ function drawScore() {
   ctx.textBaseline = 'middle';
   ctx.fillText('NEW GAME', SIDE_PANEL_WIDTH / 2, buttonY + buttonHeight / 2);
 
-  // Draw instructions (at bottom of side panel)
-  const instructionsY = height - padding * 4;
+  // Draw instructions (further up to avoid overlay with button)
+  const instructionsY = buttonY + buttonHeight + padding * 4;
   ctx.fillStyle = COLORS.textDark;
   ctx.font = `${FONT_SIZE * 0.5}px Arial`;
   ctx.textAlign = 'center';
-  ctx.textBaseline = 'bottom';
+  ctx.textBaseline = 'top';  // Changed to top alignment
 
-  // More spacing between lines to avoid overlap
+  // Instructions with more spacing
   ctx.fillText('Use arrow keys', SIDE_PANEL_WIDTH / 2, instructionsY);
-  ctx.fillText('to move tiles', SIDE_PANEL_WIDTH / 2, instructionsY + FONT_SIZE * 1.2);
+  ctx.fillText('to move tiles', SIDE_PANEL_WIDTH / 2, instructionsY + FONT_SIZE);
 }
 
 function drawGameOver() {
