@@ -102,9 +102,19 @@ function addRandomTile() {
 
   // Add a 2 (90% chance) or 4 (10% chance)
   const value = Math.random() < 0.9 ? 2 : 4;
+
+  // IMPORTANT: Make sure the cell is actually empty
+  if (game.grid[cell.row][cell.col] !== 0) {
+    // If somehow the cell isn't empty, try again
+    // This shouldn't happen but is a safeguard
+    return addRandomTile();
+  }
+
+  // Add the tile to the grid
   game.grid[cell.row][cell.col] = value;
 
   // Add a "pop in" animation for the new tile
+  // This doesn't change the game logic, just visuals
   game.mergeQueue.push({
     row: cell.row,
     col: cell.col,
