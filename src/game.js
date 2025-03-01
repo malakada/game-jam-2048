@@ -659,32 +659,33 @@ function drawScore() {
   ctx.textBaseline = 'middle';
   ctx.fillText(game.bestScore.toString(), SIDE_PANEL_WIDTH / 2, bestBoxY + scoreBoxHeight / 2 + padding / 2);
 
-  // Draw New Game button - FIX: ensure button is fully visible in panel
-  const buttonY = bestBoxY + scoreBoxHeight + padding * 2;
+  // Draw New Game button - ensure button fits and text is centered
+  const buttonY = bestBoxY + scoreBoxHeight + padding;
   const buttonHeight = FONT_SIZE * 2;
   ctx.fillStyle = '#8f7a66';  // Button color
   ctx.fillRect(padding, buttonY, scoreBoxWidth, buttonHeight);
 
-  // Button text - FIX: ensure text is properly centered
+  // Button text - make sure it fully appears
   ctx.fillStyle = COLORS.textLight;
-  ctx.font = `bold ${FONT_SIZE * 0.8}px Arial`;
-  ctx.textAlign = 'center';  // Ensure text is centered
+  ctx.font = `bold ${FONT_SIZE * 0.75}px Arial`; // Slightly smaller font
+  ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText('NEW GAME', SIDE_PANEL_WIDTH / 2, buttonY + buttonHeight / 2);
 
-  // Draw instructions - FIX: make instructions visible
+  // Draw instructions - make sure they appear
   const instructionsY = buttonY + buttonHeight + padding;
   ctx.fillStyle = COLORS.textDark;
-  ctx.font = `${FONT_SIZE * 0.6}px Arial`;  // Increased font size for visibility
+  ctx.font = `${FONT_SIZE * 0.55}px Arial`; // Adjusted size for visibility
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
 
-  // Instructions with more spacing and better positioning
+  // Instructions with proper spacing for visibility
+  const lineHeight = FONT_SIZE * 0.9;
   ctx.fillText('HOW TO PLAY:', SIDE_PANEL_WIDTH / 2, instructionsY);
-  ctx.fillText('Use arrow keys', SIDE_PANEL_WIDTH / 2, instructionsY + FONT_SIZE * 1.2);
-  ctx.fillText('to move tiles', SIDE_PANEL_WIDTH / 2, instructionsY + FONT_SIZE * 2.4);
-  ctx.fillText('Combine same', SIDE_PANEL_WIDTH / 2, instructionsY + FONT_SIZE * 3.6);
-  ctx.fillText('numbers to win!', SIDE_PANEL_WIDTH / 2, instructionsY + FONT_SIZE * 4.8);
+  ctx.fillText('Use arrow keys', SIDE_PANEL_WIDTH / 2, instructionsY + lineHeight);
+  ctx.fillText('to move tiles', SIDE_PANEL_WIDTH / 2, instructionsY + lineHeight * 2);
+  ctx.fillText('Combine same', SIDE_PANEL_WIDTH / 2, instructionsY + lineHeight * 3);
+  ctx.fillText('numbers to win!', SIDE_PANEL_WIDTH / 2, instructionsY + lineHeight * 4);
 }
 
 function drawGameOver() {
@@ -728,7 +729,7 @@ function update(deltaTime) {
 
   const currentTime = performance.now();
 
-  // Get input
+  // Get input - make sure we're getting accurate input from getInput()
   const [p1] = getInput();
 
   // Only process input if enough time has passed
@@ -739,6 +740,7 @@ function update(deltaTime) {
       // Restart the game if Enter is pressed
       if (p1.START.pressed || p1.BUTTON_SOUTH.pressed) {
         initGame();
+        lastInputTime = currentTime;
       }
     } else {
       if (p1.DPAD_LEFT.pressed) {
@@ -814,7 +816,7 @@ function draw() {
     drawAnimations();
   }
 
-  // Draw UI elements (combined into one function for side panel)
+  // Draw UI elements
   drawScore();
 
   // Draw game over screen if applicable
@@ -822,7 +824,6 @@ function draw() {
     drawGameOver();
   }
 }
-
 // Game loop
 function gameLoop(time) {
   const deltaTime = lastTime ? time - lastTime : 16;
