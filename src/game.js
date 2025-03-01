@@ -111,6 +111,12 @@ function addRandomTile() {
     value: value,
     isNew: true  // Flag to indicate this is a new tile
   });
+
+  // Start animation for new tile
+  if (game.animationProgress === 0) {
+    game.animationStartTime = performance.now();
+    game.moveInProgress = true;
+  }
 }
 
 // Check if the game is over
@@ -583,8 +589,8 @@ function drawAnimations() {
   for (const merge of game.mergeQueue) {
     // Scale from 0 to 1 for new tiles, pulse effect for merged tiles
     const scale = merge.isNew
-      ? progress
-      : 1 + 0.1 * Math.sin(progress * Math.PI);
+      ? progress // Scale from 0 to 1 for new tiles
+      : 1 + 0.1 * Math.sin(progress * Math.PI); // Pulse effect for merged tiles
 
     drawTile(merge.row, merge.col, merge.value, scale);
   }
@@ -653,28 +659,32 @@ function drawScore() {
   ctx.textBaseline = 'middle';
   ctx.fillText(game.bestScore.toString(), SIDE_PANEL_WIDTH / 2, bestBoxY + scoreBoxHeight / 2 + padding / 2);
 
-  // Draw New Game button
+  // Draw New Game button - FIX: ensure button is fully visible in panel
   const buttonY = bestBoxY + scoreBoxHeight + padding * 2;
   const buttonHeight = FONT_SIZE * 2;
   ctx.fillStyle = '#8f7a66';  // Button color
   ctx.fillRect(padding, buttonY, scoreBoxWidth, buttonHeight);
 
-  // Button text
+  // Button text - FIX: ensure text is properly centered
   ctx.fillStyle = COLORS.textLight;
   ctx.font = `bold ${FONT_SIZE * 0.8}px Arial`;
+  ctx.textAlign = 'center';  // Ensure text is centered
   ctx.textBaseline = 'middle';
   ctx.fillText('NEW GAME', SIDE_PANEL_WIDTH / 2, buttonY + buttonHeight / 2);
 
-  // Draw instructions (further up to avoid overlay with button)
-  const instructionsY = buttonY + buttonHeight + padding * 4;
+  // Draw instructions - FIX: make instructions visible
+  const instructionsY = buttonY + buttonHeight + padding;
   ctx.fillStyle = COLORS.textDark;
-  ctx.font = `${FONT_SIZE * 0.5}px Arial`;
+  ctx.font = `${FONT_SIZE * 0.6}px Arial`;  // Increased font size for visibility
   ctx.textAlign = 'center';
-  ctx.textBaseline = 'top';  // Changed to top alignment
+  ctx.textBaseline = 'top';
 
-  // Instructions with more spacing
-  ctx.fillText('Use arrow keys', SIDE_PANEL_WIDTH / 2, instructionsY);
-  ctx.fillText('to move tiles', SIDE_PANEL_WIDTH / 2, instructionsY + FONT_SIZE);
+  // Instructions with more spacing and better positioning
+  ctx.fillText('HOW TO PLAY:', SIDE_PANEL_WIDTH / 2, instructionsY);
+  ctx.fillText('Use arrow keys', SIDE_PANEL_WIDTH / 2, instructionsY + FONT_SIZE * 1.2);
+  ctx.fillText('to move tiles', SIDE_PANEL_WIDTH / 2, instructionsY + FONT_SIZE * 2.4);
+  ctx.fillText('Combine same', SIDE_PANEL_WIDTH / 2, instructionsY + FONT_SIZE * 3.6);
+  ctx.fillText('numbers to win!', SIDE_PANEL_WIDTH / 2, instructionsY + FONT_SIZE * 4.8);
 }
 
 function drawGameOver() {
