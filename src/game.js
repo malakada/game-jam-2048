@@ -783,8 +783,16 @@ function update(deltaTime) {
         game.animationStartTime = performance.now();
         game.animationProgress = 0;
 
-        // Add a new tile
-        addRandomTile();
+        // IMPORTANT: Process the move completely before adding a new tile
+        // This ensures the new tile won't be processed in this move
+
+        // Add a new tile AFTER all move processing is complete
+        setTimeout(() => {
+          // Only add a new tile if the game is still in progress
+          if (!game.gameOver && !game.won) {
+            addRandomTile();
+          }
+        }, 10); // Small delay to ensure move processing is complete
 
         // Check win/lose conditions
         if (!game.won && checkWin()) {
