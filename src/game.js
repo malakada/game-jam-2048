@@ -7,33 +7,24 @@ const canvas = document.getElementById("game-canvas");
 const ctx = canvas.getContext("2d");
 
 const { width, height } = canvas;
-let lastTime;
+let lastTime = 0;
 let lastInputTime = 0;
-const inputCooldown = 80; // ms between allowed inputs - reduced for better responsiveness
+const inputCooldown = 80; // ms between allowed inputs - very responsive
 
 const resources = createResourceLoader();
 
 // Game constants
 const GRID_SIZE = 4;
-// Calculate responsive padding based on canvas aspect ratio
-const BOARD_PADDING_PERCENT = 0.01; // Reduce padding to 1% of min dimension
-const CELL_PADDING_PERCENT = 0.003; // Reduce cell padding to 0.3% of min dimension
-// Calculate available space ensuring everything fits
-const AVAILABLE_HEIGHT = height * 0.95; // Use 95% of canvas height
-const BOARD_PADDING = Math.min(width, height) * BOARD_PADDING_PERCENT;
-const CELL_PADDING = Math.min(width, height) * CELL_PADDING_PERCENT;
+const BOARD_PADDING = Math.max(8, width * 0.02);
+const CELL_PADDING = Math.max(4, width * 0.005);
 
-// Reserve space for UI elements (title + instructions)
-const UI_RESERVED_HEIGHT = height * 0.1;
-
-// Calculate the maximum size the board can be
+// Calculate board size to fit within available space
 const BOARD_SIZE = Math.min(
-  width * 0.95 - BOARD_PADDING * 2,
-  AVAILABLE_HEIGHT - UI_RESERVED_HEIGHT - BOARD_PADDING * 2,
+  width - BOARD_PADDING * 2,
+  height - BOARD_PADDING * 4,
 );
-
 const CELL_SIZE = (BOARD_SIZE - CELL_PADDING * (GRID_SIZE + 1)) / GRID_SIZE;
-const FONT_SIZE = CELL_SIZE * 0.4;
+const FONT_SIZE = Math.max(15, CELL_SIZE * 0.35);
 
 // Color palette
 const COLORS = {
@@ -68,9 +59,9 @@ const game = {
   moveInProgress: false,
   animationProgress: 0,
   animationStartTime: 0,
-  animationDuration: 50, // ms - extremely fast animations for immediate feedback
-  animationQueue: [], // [{from: {row, col}, to: {row, col}, value}]
-  mergeQueue: [], // [{row, col, value}]
+  animationDuration: 50, // very fast animations
+  animationQueue: [],
+  mergeQueue: [],
 };
 
 // Initialize the game
@@ -160,101 +151,81 @@ function checkWin() {
   return false;
 }
 
-// Move logic
+// MOVE FUNCTIONS
 function moveLeft() {
   let moved = false;
   game.animationQueue = [];
   game.mergeQueue = [];
 
-  // Make a deep copy of the grid for movement validation
-  const originalGrid = Array(GRID_SIZE);
-  for (let r = 0; r < GRID_SIZE; r++) {
-    originalGrid[r] = Array(GRID_SIZE);
-    for (let c = 0; c < GRID_SIZE; c++) {
-      originalGrid[r][c] = game.grid[r][c];
-    }
-  }
-
   for (let row = 0; row < GRID_SIZE; row++) {
-    let lastMergeCol = -1; // Keep track of the last column where a merge happened
-
-    // First, move all tiles as far left as possible
+    // First pass: move everything left
     for (let col = 1; col < GRID_SIZE; col++) {
       if (game.grid[row][col] === 0) continue;
 
-      const value = game.grid[row][col];
       let moveToCol = col;
 
-      // Try to move to the leftmost possible position
+      // Find leftmost empty position
       while (moveToCol > 0 && game.grid[row][moveToCol - 1] === 0) {
         moveToCol--;
       }
 
-      // Only if we actually moved, update the grid
+      // Only update if the tile actually moved
       if (moveToCol < col) {
         // Add to animation queue
         game.animationQueue.push({
           from: { row, col },
           to: { row, col: moveToCol },
-          value: value,
+          value: game.grid[row][col],
         });
 
-        // Update the grid
-        game.grid[row][moveToCol] = value;
+        // Update grid
+        game.grid[row][moveToCol] = game.grid[row][col];
         game.grid[row][col] = 0;
         moved = true;
       }
     }
 
-    // After moving, check for merges from left to right
+    // Second pass: merge tiles
     for (let col = 0; col < GRID_SIZE - 1; col++) {
-      if (game.grid[row][col] === 0 || game.grid[row][col + 1] === 0) continue;
-
-      if (game.grid[row][col] === game.grid[row][col + 1]) {
-        // Merge
-        const mergedValue = game.grid[row][col] * 2;
-        game.score += mergedValue;
+      if (
+        game.grid[row][col] !== 0 &&
+        game.grid[row][col] === game.grid[row][col + 1]
+      ) {
+        // Merge tiles
+        game.grid[row][col] *= 2;
+        game.score += game.grid[row][col];
         game.bestScore = Math.max(game.bestScore, game.score);
-
-        // Add to animation queue (if it wasn't already moved)
-        const foundInAnimation = game.animationQueue.some(
-          (anim) => anim.to.row === row && anim.to.col === col + 1,
-        );
-
-        if (!foundInAnimation) {
-          game.animationQueue.push({
-            from: { row, col: col + 1 },
-            to: { row, col },
-            value: game.grid[row][col + 1],
-          });
-        }
 
         // Add to merge queue
         game.mergeQueue.push({
           row,
           col,
-          value: mergedValue,
+          value: game.grid[row][col],
         });
 
-        // Update the grid
-        game.grid[row][col] = mergedValue;
-        game.grid[row][col + 1] = 0;
+        // Add animation for the merged tile
+        game.animationQueue.push({
+          from: { row, col: col + 1 },
+          to: { row, col },
+          value: game.grid[row][col] / 2,
+        });
 
-        // Shift all tiles to the right of the merge
+        // Shift all tiles to the right
         for (let c = col + 1; c < GRID_SIZE - 1; c++) {
-          if (game.grid[row][c + 1] !== 0) {
-            // Update animation queue for this tile
+          game.grid[row][c] = game.grid[row][c + 1];
+
+          if (game.grid[row][c] !== 0) {
+            // Add animation for shifted tile
             game.animationQueue.push({
               from: { row, col: c + 1 },
               to: { row, col: c },
-              value: game.grid[row][c + 1],
+              value: game.grid[row][c],
             });
-
-            game.grid[row][c] = game.grid[row][c + 1];
-            game.grid[row][c + 1] = 0;
           }
         }
 
+        // Clear the rightmost cell
+        game.grid[row][GRID_SIZE - 1] = 0;
         moved = true;
       }
     }
@@ -268,95 +239,75 @@ function moveRight() {
   game.animationQueue = [];
   game.mergeQueue = [];
 
-  // Make a deep copy of the grid for movement validation
-  const originalGrid = Array(GRID_SIZE);
-  for (let r = 0; r < GRID_SIZE; r++) {
-    originalGrid[r] = Array(GRID_SIZE);
-    for (let c = 0; c < GRID_SIZE; c++) {
-      originalGrid[r][c] = game.grid[r][c];
-    }
-  }
-
   for (let row = 0; row < GRID_SIZE; row++) {
-    let lastMergeCol = GRID_SIZE; // Keep track of the last column where a merge happened
-
-    // First, move all tiles as far right as possible
+    // First pass: move everything right
     for (let col = GRID_SIZE - 2; col >= 0; col--) {
       if (game.grid[row][col] === 0) continue;
 
-      const value = game.grid[row][col];
       let moveToCol = col;
 
-      // Try to move to the rightmost possible position
+      // Find rightmost empty position
       while (moveToCol < GRID_SIZE - 1 && game.grid[row][moveToCol + 1] === 0) {
         moveToCol++;
       }
 
-      // Only if we actually moved, update the grid
+      // Only update if the tile actually moved
       if (moveToCol > col) {
         // Add to animation queue
         game.animationQueue.push({
           from: { row, col },
           to: { row, col: moveToCol },
-          value: value,
+          value: game.grid[row][col],
         });
 
-        // Update the grid
-        game.grid[row][moveToCol] = value;
+        // Update grid
+        game.grid[row][moveToCol] = game.grid[row][col];
         game.grid[row][col] = 0;
         moved = true;
       }
     }
 
-    // After moving, check for merges from right to left
+    // Second pass: merge tiles
     for (let col = GRID_SIZE - 1; col > 0; col--) {
-      if (game.grid[row][col] === 0 || game.grid[row][col - 1] === 0) continue;
-
-      if (game.grid[row][col] === game.grid[row][col - 1]) {
-        // Merge
-        const mergedValue = game.grid[row][col] * 2;
-        game.score += mergedValue;
+      if (
+        game.grid[row][col] !== 0 &&
+        game.grid[row][col] === game.grid[row][col - 1]
+      ) {
+        // Merge tiles
+        game.grid[row][col] *= 2;
+        game.score += game.grid[row][col];
         game.bestScore = Math.max(game.bestScore, game.score);
-
-        // Add to animation queue (if it wasn't already moved)
-        const foundInAnimation = game.animationQueue.some(
-          (anim) => anim.to.row === row && anim.to.col === col - 1,
-        );
-
-        if (!foundInAnimation) {
-          game.animationQueue.push({
-            from: { row, col: col - 1 },
-            to: { row, col },
-            value: game.grid[row][col - 1],
-          });
-        }
 
         // Add to merge queue
         game.mergeQueue.push({
           row,
           col,
-          value: mergedValue,
+          value: game.grid[row][col],
         });
 
-        // Update the grid
-        game.grid[row][col] = mergedValue;
-        game.grid[row][col - 1] = 0;
+        // Add animation for the merged tile
+        game.animationQueue.push({
+          from: { row, col: col - 1 },
+          to: { row, col },
+          value: game.grid[row][col] / 2,
+        });
 
-        // Shift all tiles to the left of the merge
+        // Shift all tiles to the left
         for (let c = col - 1; c > 0; c--) {
-          if (game.grid[row][c - 1] !== 0) {
-            // Update animation queue for this tile
+          game.grid[row][c] = game.grid[row][c - 1];
+
+          if (game.grid[row][c] !== 0) {
+            // Add animation for shifted tile
             game.animationQueue.push({
               from: { row, col: c - 1 },
               to: { row, col: c },
-              value: game.grid[row][c - 1],
+              value: game.grid[row][c],
             });
-
-            game.grid[row][c] = game.grid[row][c - 1];
-            game.grid[row][c - 1] = 0;
           }
         }
 
+        // Clear the leftmost cell
+        game.grid[row][0] = 0;
         moved = true;
       }
     }
@@ -370,95 +321,75 @@ function moveUp() {
   game.animationQueue = [];
   game.mergeQueue = [];
 
-  // Make a deep copy of the grid for movement validation
-  const originalGrid = Array(GRID_SIZE);
-  for (let r = 0; r < GRID_SIZE; r++) {
-    originalGrid[r] = Array(GRID_SIZE);
-    for (let c = 0; c < GRID_SIZE; c++) {
-      originalGrid[r][c] = game.grid[r][c];
-    }
-  }
-
   for (let col = 0; col < GRID_SIZE; col++) {
-    let lastMergeRow = -1; // Keep track of the last row where a merge happened
-
-    // First, move all tiles as far up as possible
+    // First pass: move everything up
     for (let row = 1; row < GRID_SIZE; row++) {
       if (game.grid[row][col] === 0) continue;
 
-      const value = game.grid[row][col];
       let moveToRow = row;
 
-      // Try to move to the topmost possible position
+      // Find topmost empty position
       while (moveToRow > 0 && game.grid[moveToRow - 1][col] === 0) {
         moveToRow--;
       }
 
-      // Only if we actually moved, update the grid
+      // Only update if the tile actually moved
       if (moveToRow < row) {
         // Add to animation queue
         game.animationQueue.push({
           from: { row, col },
           to: { row: moveToRow, col },
-          value: value,
+          value: game.grid[row][col],
         });
 
-        // Update the grid
-        game.grid[moveToRow][col] = value;
+        // Update grid
+        game.grid[moveToRow][col] = game.grid[row][col];
         game.grid[row][col] = 0;
         moved = true;
       }
     }
 
-    // After moving, check for merges from top to bottom
+    // Second pass: merge tiles
     for (let row = 0; row < GRID_SIZE - 1; row++) {
-      if (game.grid[row][col] === 0 || game.grid[row + 1][col] === 0) continue;
-
-      if (game.grid[row][col] === game.grid[row + 1][col]) {
-        // Merge
-        const mergedValue = game.grid[row][col] * 2;
-        game.score += mergedValue;
+      if (
+        game.grid[row][col] !== 0 &&
+        game.grid[row][col] === game.grid[row + 1][col]
+      ) {
+        // Merge tiles
+        game.grid[row][col] *= 2;
+        game.score += game.grid[row][col];
         game.bestScore = Math.max(game.bestScore, game.score);
-
-        // Add to animation queue (if it wasn't already moved)
-        const foundInAnimation = game.animationQueue.some(
-          (anim) => anim.to.row === row + 1 && anim.to.col === col,
-        );
-
-        if (!foundInAnimation) {
-          game.animationQueue.push({
-            from: { row: row + 1, col },
-            to: { row, col },
-            value: game.grid[row + 1][col],
-          });
-        }
 
         // Add to merge queue
         game.mergeQueue.push({
           row,
           col,
-          value: mergedValue,
+          value: game.grid[row][col],
         });
 
-        // Update the grid
-        game.grid[row][col] = mergedValue;
-        game.grid[row + 1][col] = 0;
+        // Add animation for the merged tile
+        game.animationQueue.push({
+          from: { row: row + 1, col },
+          to: { row, col },
+          value: game.grid[row][col] / 2,
+        });
 
-        // Shift all tiles below the merge
+        // Shift all tiles down
         for (let r = row + 1; r < GRID_SIZE - 1; r++) {
-          if (game.grid[r + 1][col] !== 0) {
-            // Update animation queue for this tile
+          game.grid[r][col] = game.grid[r + 1][col];
+
+          if (game.grid[r][col] !== 0) {
+            // Add animation for shifted tile
             game.animationQueue.push({
               from: { row: r + 1, col },
               to: { row: r, col },
-              value: game.grid[r + 1][col],
+              value: game.grid[r][col],
             });
-
-            game.grid[r][col] = game.grid[r + 1][col];
-            game.grid[r + 1][col] = 0;
           }
         }
 
+        // Clear the bottom cell
+        game.grid[GRID_SIZE - 1][col] = 0;
         moved = true;
       }
     }
@@ -472,95 +403,75 @@ function moveDown() {
   game.animationQueue = [];
   game.mergeQueue = [];
 
-  // Make a deep copy of the grid for movement validation
-  const originalGrid = Array(GRID_SIZE);
-  for (let r = 0; r < GRID_SIZE; r++) {
-    originalGrid[r] = Array(GRID_SIZE);
-    for (let c = 0; c < GRID_SIZE; c++) {
-      originalGrid[r][c] = game.grid[r][c];
-    }
-  }
-
   for (let col = 0; col < GRID_SIZE; col++) {
-    let lastMergeRow = GRID_SIZE; // Keep track of the last row where a merge happened
-
-    // First, move all tiles as far down as possible
+    // First pass: move everything down
     for (let row = GRID_SIZE - 2; row >= 0; row--) {
       if (game.grid[row][col] === 0) continue;
 
-      const value = game.grid[row][col];
       let moveToRow = row;
 
-      // Try to move to the bottommost possible position
+      // Find bottommost empty position
       while (moveToRow < GRID_SIZE - 1 && game.grid[moveToRow + 1][col] === 0) {
         moveToRow++;
       }
 
-      // Only if we actually moved, update the grid
+      // Only update if the tile actually moved
       if (moveToRow > row) {
         // Add to animation queue
         game.animationQueue.push({
           from: { row, col },
           to: { row: moveToRow, col },
-          value: value,
+          value: game.grid[row][col],
         });
 
-        // Update the grid
-        game.grid[moveToRow][col] = value;
+        // Update grid
+        game.grid[moveToRow][col] = game.grid[row][col];
         game.grid[row][col] = 0;
         moved = true;
       }
     }
 
-    // After moving, check for merges from bottom to top
+    // Second pass: merge tiles
     for (let row = GRID_SIZE - 1; row > 0; row--) {
-      if (game.grid[row][col] === 0 || game.grid[row - 1][col] === 0) continue;
-
-      if (game.grid[row][col] === game.grid[row - 1][col]) {
-        // Merge
-        const mergedValue = game.grid[row][col] * 2;
-        game.score += mergedValue;
+      if (
+        game.grid[row][col] !== 0 &&
+        game.grid[row][col] === game.grid[row - 1][col]
+      ) {
+        // Merge tiles
+        game.grid[row][col] *= 2;
+        game.score += game.grid[row][col];
         game.bestScore = Math.max(game.bestScore, game.score);
-
-        // Add to animation queue (if it wasn't already moved)
-        const foundInAnimation = game.animationQueue.some(
-          (anim) => anim.to.row === row - 1 && anim.to.col === col,
-        );
-
-        if (!foundInAnimation) {
-          game.animationQueue.push({
-            from: { row: row - 1, col },
-            to: { row, col },
-            value: game.grid[row - 1][col],
-          });
-        }
 
         // Add to merge queue
         game.mergeQueue.push({
           row,
           col,
-          value: mergedValue,
+          value: game.grid[row][col],
         });
 
-        // Update the grid
-        game.grid[row][col] = mergedValue;
-        game.grid[row - 1][col] = 0;
+        // Add animation for the merged tile
+        game.animationQueue.push({
+          from: { row: row - 1, col },
+          to: { row, col },
+          value: game.grid[row][col] / 2,
+        });
 
-        // Shift all tiles above the merge
+        // Shift all tiles up
         for (let r = row - 1; r > 0; r--) {
-          if (game.grid[r - 1][col] !== 0) {
-            // Update animation queue for this tile
+          game.grid[r][col] = game.grid[r - 1][col];
+
+          if (game.grid[r][col] !== 0) {
+            // Add animation for shifted tile
             game.animationQueue.push({
               from: { row: r - 1, col },
               to: { row: r, col },
-              value: game.grid[r - 1][col],
+              value: game.grid[r][col],
             });
-
-            game.grid[r][col] = game.grid[r - 1][col];
-            game.grid[r - 1][col] = 0;
           }
         }
 
+        // Clear the top cell
+        game.grid[0][col] = 0;
         moved = true;
       }
     }
@@ -569,11 +480,11 @@ function moveDown() {
   return moved;
 }
 
-// Helpers for drawing
+// Helper functions for drawing
 function getCellPosition(row, col) {
-  // Calculate board position (centered horizontally)
+  // Center board horizontally
   const boardX = (width - BOARD_SIZE) / 2;
-  const boardY = BOARD_PADDING * 2; // Leave space for score at top
+  const boardY = BOARD_PADDING * 2;
 
   const x = boardX + col * (CELL_SIZE + CELL_PADDING) + CELL_PADDING;
   const y = boardY + row * (CELL_SIZE + CELL_PADDING) + CELL_PADDING;
@@ -592,36 +503,126 @@ function getTextColor(value) {
 }
 
 // Draw functions
-function drawGameOver() {
-  // Semi-transparent overlay
-  ctx.fillStyle = "rgba(238, 228, 218, 0.73)";
+function drawBoard() {
+  // Draw background
+  ctx.fillStyle = COLORS.background;
   ctx.fillRect(0, 0, width, height);
 
-  // Text
-  ctx.fillStyle = "#776e65";
-  ctx.font = `bold ${FONT_SIZE * 1.5}px Arial`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
+  // Center the board on the canvas
+  const boardX = (width - BOARD_SIZE) / 2;
+  const boardY = BOARD_PADDING * 2;
 
-  if (game.won) {
-    ctx.fillText("You Win!", width / 2, height / 2 - FONT_SIZE);
-  } else {
-    ctx.fillText("Game Over!", width / 2, height / 2 - FONT_SIZE);
+  // Draw board background
+  ctx.fillStyle = COLORS.board;
+  ctx.fillRect(
+    boardX - CELL_PADDING / 2,
+    boardY - CELL_PADDING / 2,
+    BOARD_SIZE + CELL_PADDING,
+    BOARD_SIZE + CELL_PADDING,
+  );
+
+  // Draw empty cells
+  for (let row = 0; row < GRID_SIZE; row++) {
+    for (let col = 0; col < GRID_SIZE; col++) {
+      const { x, y } = getCellPosition(row, col);
+      ctx.fillStyle = COLORS.emptyCellColor;
+      ctx.fillRect(x, y, CELL_SIZE, CELL_SIZE);
+    }
+  }
+}
+
+function drawTile(row, col, value, scale = 1, offsetX = 0, offsetY = 0) {
+  if (value === 0) return;
+
+  const { x, y } = getCellPosition(row, col);
+  const scaledSize = CELL_SIZE * scale;
+  const xPos = x + offsetX + (CELL_SIZE - scaledSize) / 2;
+  const yPos = y + offsetY + (CELL_SIZE - scaledSize) / 2;
+
+  // Draw tile background
+  ctx.fillStyle = getTileColor(value);
+  ctx.fillRect(xPos, yPos, scaledSize, scaledSize);
+
+  // Draw tile text
+  ctx.fillStyle = getTextColor(value);
+
+  let fontSize = FONT_SIZE * scale;
+
+  // Adjust font size for larger numbers
+  if (value > 999) {
+    fontSize *= 0.7;
+  } else if (value > 99) {
+    fontSize *= 0.8;
+  } else if (value > 9) {
+    fontSize *= 0.9;
   }
 
-  // Restart message
-  ctx.font = `bold ${FONT_SIZE}px Arial`;
-  ctx.fillText("Press Enter to Restart", width / 2, height / 2 + FONT_SIZE * 2);
+  ctx.font = `bold ${fontSize}px Arial`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(value.toString(), xPos + scaledSize / 2, yPos + scaledSize / 2);
+}
+
+function drawAnimations() {
+  if (game.animationQueue.length === 0) return;
+
+  if (game.animationProgress === 0) {
+    game.animationStartTime = performance.now();
+  }
+
+  game.animationProgress = Math.min(
+    1,
+    (performance.now() - game.animationStartTime) / game.animationDuration,
+  );
+
+  // Linear animation for speed
+  const progress = game.animationProgress;
+
+  // Draw animated tiles
+  for (const anim of game.animationQueue) {
+    const fromPos = getCellPosition(anim.from.row, anim.from.col);
+    const toPos = getCellPosition(anim.to.row, anim.to.col);
+
+    const x = fromPos.x + (toPos.x - fromPos.x) * progress;
+    const y = fromPos.y + (toPos.y - fromPos.y) * progress;
+
+    // Convert to offset relative to final position
+    const offsetX = x - toPos.x;
+    const offsetY = y - toPos.y;
+
+    // Draw the tile at its current position
+    drawTile(anim.to.row, anim.to.col, anim.value, 1, offsetX, offsetY);
+  }
+
+  // Quick merge animation
+  if (game.animationProgress > 0.2) {
+    const mergeProgress = (game.animationProgress - 0.2) / 0.8;
+
+    // Simple scale effect
+    const scale = 1 + 0.1 * Math.sin(mergeProgress * Math.PI);
+
+    for (const merge of game.mergeQueue) {
+      drawTile(merge.row, merge.col, merge.value, scale);
+    }
+  }
+
+  // Reset animations when complete
+  if (game.animationProgress >= 1) {
+    game.animationProgress = 0;
+    game.animationQueue = [];
+    game.mergeQueue = [];
+    game.moveInProgress = false;
+  }
 }
 
 function drawScore() {
-  // Center the score boxes relative to the board
+  // Center score boxes relative to board
   const boardX = (width - BOARD_SIZE) / 2;
-  const scoreBoxWidth = BOARD_SIZE * 0.2;
-  const scoreBoxHeight = BOARD_PADDING * 1.5;
+  const scoreBoxWidth = Math.min(100, BOARD_SIZE * 0.2);
+  const scoreBoxHeight = BOARD_PADDING;
   const scoreBoxY = BOARD_PADDING / 2;
 
-  // Position score boxes centered with the board
+  // Position score boxes
   const bestBoxX = boardX + BOARD_SIZE * 0.15;
   const scoreBoxX = boardX + BOARD_SIZE * 0.65;
 
@@ -675,7 +676,7 @@ function drawScore() {
 }
 
 function drawTitle() {
-  // Center title with the board
+  // Center title with board
   const boardX = (width - BOARD_SIZE) / 2;
 
   // Draw 2048 title
@@ -687,144 +688,154 @@ function drawTitle() {
 }
 
 function drawInstructions() {
-  // Position instructions at the very bottom, with small padding
-  const y = height - BOARD_PADDING;
+  // Position at bottom of screen
+  const y = height - BOARD_PADDING / 2;
 
   ctx.fillStyle = COLORS.textDark;
   ctx.font = `${FONT_SIZE * 0.5}px Arial`;
   ctx.textAlign = "center";
-  ctx.textBaseline = "bottom"; // Align to bottom to prevent cutoff
+  ctx.textBaseline = "bottom";
 
-  // Shorter instruction text
+  // Short text
   ctx.fillText("Use arrow keys to move", width / 2, y);
 }
 
-function drawBoard() {
-  // Draw background
-  ctx.fillStyle = COLORS.background;
+function drawGameOver() {
+  // Semi-transparent overlay
+  ctx.fillStyle = "rgba(238, 228, 218, 0.73)";
   ctx.fillRect(0, 0, width, height);
 
-  // Center the board on the canvas
-  const boardX = (width - BOARD_SIZE) / 2;
-  const boardY = BOARD_PADDING * 2; // Leave space for score at top
-
-  // Draw board background (centered)
-  ctx.fillStyle = COLORS.board;
-  ctx.fillRect(
-    boardX - CELL_PADDING / 2,
-    boardY - CELL_PADDING / 2,
-    BOARD_SIZE + CELL_PADDING,
-    BOARD_SIZE + CELL_PADDING,
-  );
-
-  // Draw empty cells
-  for (let row = 0; row < GRID_SIZE; row++) {
-    for (let col = 0; col < GRID_SIZE; col++) {
-      const { x, y } = getCellPosition(row, col);
-      ctx.fillStyle = COLORS.emptyCellColor;
-      ctx.fillRect(x, y, CELL_SIZE, CELL_SIZE);
-    }
-  }
-
-  // Draw height debugging line at bottom of visible space (comment out in final version)
-  // ctx.strokeStyle = 'red';
-  // ctx.beginPath();
-  // ctx.moveTo(0, height);
-  // ctx.lineTo(width, height);
-  // ctx.stroke();
-}
-
-function drawTile(row, col, value, scale = 1, offsetX = 0, offsetY = 0) {
-  if (value === 0) return;
-
-  const { x, y } = getCellPosition(row, col);
-  const scaledSize = CELL_SIZE * scale;
-  const xPos = x + offsetX + (CELL_SIZE - scaledSize) / 2;
-  const yPos = y + offsetY + (CELL_SIZE - scaledSize) / 2;
-
-  // Draw tile background
-  ctx.fillStyle = getTileColor(value);
-  ctx.fillRect(xPos, yPos, scaledSize, scaledSize);
-
-  // Draw tile text
-  ctx.fillStyle = getTextColor(value);
-
-  let fontSize = FONT_SIZE * scale;
-
-  // Adjust font size for larger numbers
-  if (value > 999) {
-    fontSize *= 0.7;
-  } else if (value > 99) {
-    fontSize *= 0.8;
-  } else if (value > 9) {
-    fontSize *= 0.9;
-  }
-
-  ctx.font = `bold ${fontSize}px Arial`;
+  // Text
+  ctx.fillStyle = "#776e65";
+  ctx.font = `bold ${FONT_SIZE * 1.5}px Arial`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText(value.toString(), xPos + scaledSize / 2, yPos + scaledSize / 2);
+
+  if (game.won) {
+    ctx.fillText("You Win!", width / 2, height / 2 - FONT_SIZE);
+  } else {
+    ctx.fillText("Game Over!", width / 2, height / 2 - FONT_SIZE);
+  }
+
+  // Restart message
+  ctx.font = `bold ${FONT_SIZE}px Arial`;
+  ctx.fillText("Press Enter to Restart", width / 2, height / 2 + FONT_SIZE * 2);
 }
 
-function drawAnimations(deltaTime) {
-  if (game.animationQueue.length === 0) return;
+// Update function
+function update(deltaTime) {
+  if (!resources.isComplete()) return;
 
-  if (game.animationProgress === 0) {
-    game.animationStartTime = performance.now();
+  // Skip if animation is in progress
+  if (game.moveInProgress) {
+    return;
   }
 
-  game.animationProgress = Math.min(
-    1,
-    (performance.now() - game.animationStartTime) / game.animationDuration,
-  );
+  const currentTime = performance.now();
 
-  // Use a faster animation - no easing to make it instant
-  const progress = game.animationProgress;
+  // Get input
+  const [p1] = getInput();
 
-  // Draw animated tiles
-  for (const anim of game.animationQueue) {
-    const fromPos = getCellPosition(anim.from.row, anim.from.col);
-    const toPos = getCellPosition(anim.to.row, anim.to.col);
+  // Only process input if enough time has passed
+  if (currentTime - lastInputTime > inputCooldown) {
+    let moveMade = false;
 
-    const x = fromPos.x + (toPos.x - fromPos.x) * progress;
-    const y = fromPos.y + (toPos.y - fromPos.y) * progress;
+    if (game.gameOver) {
+      // Restart the game if Enter is pressed
+      if (p1.START.pressed) {
+        initGame();
+      }
+    } else {
+      if (p1.DPAD_LEFT.pressed) {
+        moveMade = moveLeft();
+        lastInputTime = currentTime;
+      } else if (p1.DPAD_RIGHT.pressed) {
+        moveMade = moveRight();
+        lastInputTime = currentTime;
+      } else if (p1.DPAD_UP.pressed) {
+        moveMade = moveUp();
+        lastInputTime = currentTime;
+      } else if (p1.DPAD_DOWN.pressed) {
+        moveMade = moveDown();
+        lastInputTime = currentTime;
+      }
 
-    // Convert to offset relative to final position
-    const offsetX = x - toPos.x;
-    const offsetY = y - toPos.y;
+      if (moveMade) {
+        game.moveInProgress = true;
+        addRandomTile();
 
-    // Draw the tile at its current position - only if we're still animating
-    if (progress < 1.0) {
-      drawTile(anim.to.row, anim.to.col, anim.value, 1, offsetX, offsetY);
+        // Check win/lose conditions
+        if (!game.won && checkWin()) {
+          game.won = true;
+        }
+
+        if (checkGameOver()) {
+          game.gameOver = true;
+        }
+      }
     }
   }
+}
 
-  // Draw merge animations - start earlier and make them quicker
-  if (game.animationProgress > 0.2) {
-    const mergeProgress = (game.animationProgress - 0.2) / 0.8; // Normalize to 0-1 range
-
-    // Simpler pop animation
-    const scale = 1 + 0.1 * Math.sin(mergeProgress * Math.PI);
-
-    for (const merge of game.mergeQueue) {
-      drawTile(merge.row, merge.col, merge.value, scale);
-    }
+// Draw function
+function draw() {
+  if (!resources.isComplete()) {
+    drawLoadingScreen(ctx, resources.getPercentComplete());
+    return;
   }
 
-  // Reset animations when complete
-  if (game.animationProgress >= 1) {
-    // Draw final state of all tiles
+  // Draw the board and UI
+  drawBoard();
+
+  // Draw tiles
+  if (!game.moveInProgress) {
     for (let row = 0; row < GRID_SIZE; row++) {
       for (let col = 0; col < GRID_SIZE; col++) {
-        if (game.grid[row][col] > 0) {
+        drawTile(row, col, game.grid[row][col]);
+      }
+    }
+  } else {
+    // During animation, draw only non-animated tiles
+    const animatedPositions = new Set();
+
+    for (const anim of game.animationQueue) {
+      animatedPositions.add(`${anim.to.row},${anim.to.col}`);
+    }
+
+    for (let row = 0; row < GRID_SIZE; row++) {
+      for (let col = 0; col < GRID_SIZE; col++) {
+        if (!animatedPositions.has(`${row},${col}`)) {
           drawTile(row, col, game.grid[row][col]);
         }
       }
     }
 
-    game.animationProgress = 0;
-    game.animationQueue = [];
-    game.mergeQueue = [];
-    game.moveInProgress = false;
+    // Draw the animations
+    drawAnimations();
+  }
+
+  // Draw UI elements
+  drawScore();
+  drawTitle();
+  drawInstructions();
+
+  // Draw game over screen if applicable
+  if (game.gameOver || game.won) {
+    drawGameOver();
   }
 }
+
+// Game loop
+function gameLoop(time) {
+  const deltaTime = lastTime ? time - lastTime : 16;
+
+  update(deltaTime);
+  draw();
+
+  lastTime = time;
+  requestAnimationFrame(gameLoop);
+}
+
+// Initialize and start the game
+initGame();
+requestAnimationFrame(gameLoop);
